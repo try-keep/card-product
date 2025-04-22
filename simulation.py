@@ -3,7 +3,7 @@ from engine import KeepCardSimulator
 
 # Create a simulator instance
 # Statement cycle starts on 1st of each month
-simulator = KeepCardSimulator(statement_cycle_start=1)
+simulator = KeepCardSimulator(statement_cycle_start=3)
 
 print("Generating transactions with FIXED payment impact on Balance Due...")
 

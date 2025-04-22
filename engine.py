@@ -578,37 +578,24 @@ class KeepCardSimulator:
 
         statement_list = []
 
-        # Generate statements until we cover all transactions
-        while current_start <= max_date:
-            # Calculate end date (day before next cycle starts)
-            if current_start.month == 12:
-                next_cycle_start = datetime.date(
-                    current_start.year + 1, 1, self.statement_cycle_start)
-            else:
-                # Handle months with fewer days than statement_cycle_start
-                next_month = current_start.month + 1
-                next_year = current_start.year
+        # Calculate number of months needed between current_start and max_date
+        months_between = (max_date.year - current_start.year) * \
+            12 + max_date.month - current_start.month + 1
 
-                # Check if statement_cycle_start exists in next month
-                try:
-                    next_cycle_start = datetime.date(
-                        next_year, next_month, self.statement_cycle_start)
-                except ValueError:
-                    # Use last day of next month
-                    if next_month == 12:
-                        next_cycle_start = datetime.date(
-                            next_year + 1, 1, 1) - timedelta(days=1)
-                    else:
-                        next_cycle_start = datetime.date(
-                            next_year, next_month + 1, 1) - timedelta(days=1)
+        # Get statement cycles using Statement class
+        statement_cycles = Statement.get_statement_cycles(
+            current_start, 1, months_between)
 
-            end_date = next_cycle_start - timedelta(days=1)
-            due_date = add_business_days(end_date, 1)
+        # Generate statements for each cycle
+        for cycle_start, cycle_end, cycle_due in statement_cycles:
+            # Stop if we've gone past max_date
+            if cycle_start > max_date:
+                break
 
             # Find transactions in this statement period
             stmt_transactions = self.transactions[
-                (self.transactions['effective_date'] >= current_start) &
-                (self.transactions['effective_date'] <= end_date)
+                (self.transactions['effective_date'] >= cycle_start) &
+                (self.transactions['effective_date'] <= cycle_end)
             ]
 
             # Calculate statement totals
@@ -626,7 +613,7 @@ class KeepCardSimulator:
                 beginning_balance = statement_list[-1]['ending_balance']
             else:
                 # For first statement, get balance before first transaction in period
-                txs_before_period = self.transactions[self.transactions['effective_date'] < current_start]
+                txs_before_period = self.transactions[self.transactions['effective_date'] < cycle_start]
                 if txs_before_period.empty:
                     beginning_balance = 0.0
                 else:
@@ -640,9 +627,9 @@ class KeepCardSimulator:
             balance_due = 0.0
 
             statement_list.append({
-                'start_date': current_start,
-                'end_date': end_date,
-                'due_date': due_date,
+                'start_date': cycle_start,
+                'end_date': cycle_end,
+                'due_date': cycle_due,
                 'beginning_balance': beginning_balance,
                 'ending_balance': ending_balance,
                 'purchases_amount': purchases_amount,
@@ -652,9 +639,6 @@ class KeepCardSimulator:
                 'balance_due': balance_due,
                 'transactions': stmt_transactions
             })
-
-            # Move to next cycle
-            current_start = next_cycle_start
 
         # Add next open statement
         if statement_list:
