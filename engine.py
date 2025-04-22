@@ -66,6 +66,45 @@ class ExtensionProduct:
                   400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month-1])
         return datetime.date(year, month, day)
 
+    def get_past_due_amount(self, payment_date):
+        """
+        Get the amount past due for this extension.
+        """
+        installments = self.payment_schedule[
+            (self.payment_schedule['payment_date'] < payment_date) &
+            (~self.payment_schedule['paid'])
+        ]
+        return installments['remaining_principal'].sum() + installments['remaining_interest'].sum()
+
+    def get_next_installment(self, payment_date):
+        """
+        Get the next installment for this extension.
+        """
+        installments = self.payment_schedule[
+            (self.payment_schedule['payment_date'] >= payment_date)
+        ]
+        return installments.sort_values(by='payment_date', ascending=True).iloc[0]
+
+    def get_next_due_amount(self, payment_date):
+        """
+        Get the amount due for the next installment.
+        """
+        installment = self.get_next_installment(payment_date)
+        if installment is None or installment['paid']:
+            return 0.0
+
+        return installment['remaining_principal'] + installment['remaining_interest']
+
+    def pay_past_due_amount(self, payment_date, payment_amount):
+        """
+        Pay the past due amount for this extension.
+        """
+        past_due_amount = self.get_past_due_amount(payment_date)
+        if past_due_amount > payment_amount:
+            return self.make_payment(payment_amount, payment_date)
+        else:
+            return self.make_payment(past_due_amount, payment_date)
+
     def make_payment(self, amount, payment_date):
         """
         Record a payment towards this extension with partial payment support.
@@ -111,16 +150,9 @@ class ExtensionProduct:
             if remaining_payment <= 0:
                 break
 
-        # Next, pay current period installment if there's money left
-        current_installment = self.payment_schedule[
-            (self.payment_schedule['payment_date'] >= payment_date) &
-            (~self.payment_schedule['paid'])
-        ].iloc[0] if not self.payment_schedule[
-            (self.payment_schedule['payment_date'] >= payment_date) &
-            (~self.payment_schedule['paid'])
-        ].empty else None
+        current_installment = self.get_next_installment(payment_date)
 
-        if current_installment is not None and remaining_payment > 0:
+        if current_installment is not None and current_installment['paid'] == False and remaining_payment > 0:
             idx = current_installment.name
             principal_payment = min(
                 remaining_payment, current_installment['remaining_principal'])
