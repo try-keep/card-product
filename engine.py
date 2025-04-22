@@ -3,6 +3,7 @@ import numpy as np
 import datetime
 import uuid
 from datetime import timedelta
+from time_utils import add_business_days
 
 
 class ExtensionProduct:
@@ -207,6 +208,54 @@ class ExtensionProduct:
         return payment
 
 
+class Statement:
+    @classmethod
+    def get_statement_cycles(cls, start_date, grace_period_days, cycle_count):
+        """
+        Calculate statement cycles based on start date and grace period.
+
+        Parameters:
+        start_date (datetime): Starting date of first statement
+        grace_period_days (int): Number of business days after statement end until due date
+        cycle_count (int): Number of statement cycles to generate
+
+        Returns:
+        list[tuple]: List of (statement_start, statement_end, statement_due) for each cycle
+        """
+        # Validate start date is not 28/29/30/31/1
+        if start_date.day in [1, 28, 29, 30, 31]:
+            raise ValueError(
+                "Statement start date must not be on the 1st or 28th-31st of month")
+
+        cycles = []
+        current_start = start_date
+
+        for _ in range(cycle_count):
+            # Calculate end date (start date + 1 month - 1 day)
+            if current_start.month == 12:
+                end_date = datetime.date(
+                    current_start.year + 1, 1, current_start.day - 1)
+            else:
+                end_date = datetime.date(
+                    current_start.year, current_start.month + 1, current_start.day - 1)
+
+            # Calculate due date by adding business days
+            due_date = add_business_days(
+                end_date, grace_period_days)
+
+            cycles.append((current_start, end_date, due_date))
+
+            # Set up next cycle start date
+            if current_start.month == 12:
+                current_start = datetime.date(
+                    current_start.year + 1, 1, current_start.day)
+            else:
+                current_start = datetime.date(
+                    current_start.year, current_start.month + 1, current_start.day)
+
+        return cycles
+
+
 class KeepCardSimulator:
     def __init__(self, statement_cycle_start=1):
         """
@@ -227,31 +276,6 @@ class KeepCardSimulator:
 
         # Statement extensions
         self.extensions = []
-
-        # Canadian holidays for 2025 (simplified list)
-        self.holidays = [
-            datetime.date(2025, 1, 1),   # New Year's Day
-            datetime.date(2025, 4, 18),  # Good Friday
-            datetime.date(2025, 5, 19),  # Victoria Day
-            datetime.date(2025, 7, 1),   # Canada Day
-            datetime.date(2025, 8, 4),   # Civic Holiday
-            datetime.date(2025, 9, 1),   # Labour Day
-            datetime.date(2025, 10, 13),  # Thanksgiving
-            datetime.date(2025, 11, 11),  # Remembrance Day
-            datetime.date(2025, 12, 25),  # Christmas Day
-            datetime.date(2025, 12, 26),  # Boxing Day
-        ]
-
-    def is_business_day(self, date):
-        """Check if the date is a business day."""
-        return date.weekday() < 5 and date not in self.holidays
-
-    def get_next_business_day(self, date):
-        """Get the next business day after the given date."""
-        next_day = date + timedelta(days=1)
-        while not self.is_business_day(next_day):
-            next_day += timedelta(days=1)
-        return next_day
 
     def add_transaction(self, transaction_type, amount, effective_date=None, created_at=None):
         """
@@ -579,7 +603,7 @@ class KeepCardSimulator:
                             next_year, next_month + 1, 1) - timedelta(days=1)
 
             end_date = next_cycle_start - timedelta(days=1)
-            due_date = self.get_next_business_day(end_date)
+            due_date = add_business_days(end_date, 1)
 
             # Find transactions in this statement period
             stmt_transactions = self.transactions[
@@ -650,7 +674,7 @@ class KeepCardSimulator:
                         next_end = datetime.date(
                             next_start.year, next_start.month + 2, 1) - timedelta(days=1)
 
-            next_due_date = self.get_next_business_day(next_end)
+            next_due_date = add_business_days(next_end, 1)
 
             statement_list.append({
                 'start_date': next_start,
@@ -930,7 +954,7 @@ class KeepCardSimulator:
                         'Card Event': [''],
                         'Card Details': [''],
                         'Extension Event': ['PAYMENT DUE'],
-                        'Extension Details': [f"ID: {ext.extension_id}, Payment: ${payment['payment_amount']:.2f} (P: ${payment['principal_amount']:.2f}, I: ${payment['interest_amount']:.2f})"]
+                        'Extension Details': [f"ID: {ext.extension_id}, Payment: ${(payment['remaining_principal'] + payment['remaining_interest']):.2f} (P: ${payment['remaining_principal']:.2f}, I: ${payment['remaining_interest']:.2f})"]
                     })
                     timeline = pd.concat(
                         [timeline, new_row], ignore_index=True)
