@@ -87,3 +87,15 @@ def test_pay_next_due_amount(base_extension):
     # Other installments should not be paid
     assert base_extension.payment_schedule.iloc[1]['paid'] == False
     assert base_extension.payment_schedule.iloc[2]['paid'] == False
+
+
+def test_get_next_due_amount_on_due_date(base_extension):
+    """Test getting next due amount when payment date is same as due date"""
+    # First payment is due on Feb 15
+    payment_date = datetime.date(2025, 2, 15)
+
+    # Get next due amount on the due date
+    next_due = base_extension.get_next_due_amount(payment_date)
+
+    # Should return first payment amount since it's due today
+    assert next_due == pytest.approx(363.33, rel=1e-2)
