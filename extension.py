@@ -1,3 +1,4 @@
+import pandas as pd
 import datetime
 
 
@@ -23,27 +24,41 @@ class ExtensionProduct:
         self.status = "ACTIVE"
 
         # Calculate total interest as fixed fee
-        total_interest = amount * (apr/100) * (term_months/12)
+        self.total_interest = amount * (apr/100) * (term_months/12)
 
         # Calculate monthly payment (fixed payment including principal and interest)
-        self.monthly_payment = (amount + total_interest) / term_months
+        self.monthly_payment = (amount + self.total_interest) / term_months
 
         # Create payment schedule as a pandas DataFrame
-        monthly_principal = amount / term_months
-        monthly_interest = total_interest / term_months
+        # Round monthly amounts to 2 decimals for all but last payment
+        monthly_principal = round(amount / term_months, 2)
+        monthly_interest = round(self.total_interest / term_months, 2)
+
+        # Calculate remainders to add to last payment
+        principal_remainder = amount - (monthly_principal * (term_months - 1))
+        interest_remainder = self.total_interest - \
+            (monthly_interest * (term_months - 1))
 
         schedule_data = []
         for month in range(1, term_months + 1):
             payment_date = self._add_months(start_date, month)
 
+            # Use remainder amounts for last payment
+            if month == term_months:
+                principal = principal_remainder
+                interest = interest_remainder
+            else:
+                principal = monthly_principal
+                interest = monthly_interest
+
             schedule_data.append({
                 'payment_number': month,
                 'payment_date': payment_date,
-                'payment_amount': self.monthly_payment,
-                'principal_amount': monthly_principal,
-                'interest_amount': monthly_interest,
-                'remaining_principal': monthly_principal,
-                'remaining_interest': monthly_interest,
+                'payment_amount': principal + interest,
+                'principal_amount': principal,
+                'interest_amount': interest,
+                'remaining_principal': principal,
+                'remaining_interest': interest,
                 'paid': False
             })
 
