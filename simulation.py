@@ -44,9 +44,8 @@ simulator.add_transaction('PAYMENT', 150.00, '2025-03-20', '2025-03-20')
 
 
 # Calculate the monthly extension payment amount
-extension = [
-    ext for ext in simulator.extensions if ext.extension_id == ext_id][0]
-monthly_payment = extension.monthly_payment
+monthly_payment = simulator.extension_factory.get_next_due_amount(
+    '2025-04-01')
 print(f"\nMonthly extension payment amount: ${monthly_payment:.2f}")
 
 # Make the first extension payment on the due date
