@@ -59,6 +59,7 @@ class ExtensionProduct:
                 'interest_amount': interest,
                 'remaining_principal': principal,
                 'remaining_interest': interest,
+                'remaining_amount': principal + interest,
                 'paid': False
             })
 
@@ -77,15 +78,22 @@ class ExtensionProduct:
                   400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month-1])
         return datetime.date(year, month, day)
 
-    def get_past_due_amount(self, payment_date):
+    def get_past_due_installments(self, payment_date):
         """
-        Get the amount past due for this extension.
+        Get all past due installments for this extension.
         """
         installments = self.payment_schedule[
             (self.payment_schedule['payment_date'] < payment_date) &
             (~self.payment_schedule['paid'])
         ]
-        return installments['remaining_principal'].sum() + installments['remaining_interest'].sum()
+        return installments.sort_values(by='payment_date', ascending=True)
+
+    def get_past_due_amount(self, payment_date):
+        """
+        Get the amount past due for this extension.
+        """
+        installments = self.get_past_due_installments(payment_date)
+        return installments['remaining_amount'].sum()
 
     def get_next_installment(self, payment_date):
         """
@@ -94,6 +102,9 @@ class ExtensionProduct:
         installments = self.payment_schedule[
             (self.payment_schedule['payment_date'] >= payment_date)
         ]
+        if installments.empty:
+            return None
+
         return installments.sort_values(by='payment_date', ascending=True).iloc[0]
 
     def get_next_due_amount(self, payment_date):
@@ -104,7 +115,7 @@ class ExtensionProduct:
         if installment is None or installment['paid']:
             return 0.0
 
-        return installment['remaining_principal'] + installment['remaining_interest']
+        return installment['remaining_amount']
 
     def pay_past_due_amount(self, payment_date, payment_amount):
         """
@@ -157,6 +168,9 @@ class ExtensionProduct:
 
             if self.payment_schedule.at[idx, 'remaining_principal'] <= 0 and self.payment_schedule.at[idx, 'remaining_interest'] <= 0:
                 self.payment_schedule.at[idx, 'paid'] = True
+
+            self.payment_schedule.at[idx,
+                                     'remaining_amount'] = self.payment_schedule.at[idx, 'remaining_interest'] + self.payment_schedule.at[idx, 'remaining_principal']
 
             if remaining_payment <= 0:
                 break
@@ -301,7 +315,67 @@ class ExtensionFactory:
                 total_due += extension.get_next_due_amount(payment_date)
         return total_due
 
-    def make_payment(self, payment_date, amount):
+    def _make_past_due_next_due_payment(self, payment_date, amount):
         """
-        Make a payment towards this extension.
+        Make a payment towards extensions in order of oldest to newest installments.
+
+        Parameters:
+        payment_date (datetime): Date of payment
+        amount (float): Payment amount
+
+        Returns:
+        dict: Payment details including amounts applied to each extension
         """
+        if isinstance(payment_date, str):
+            payment_date = datetime.datetime.strptime(
+                payment_date, '%Y-%m-%d').date()
+
+        remaining_payment = amount
+        payments_made = []
+
+        # Get all past due installments across active extensions
+        all_installments = []
+        for extension in self.extensions:
+            if extension.status == "ACTIVE":
+                # Get past due installments
+                past_due = extension.get_past_due_installments(payment_date)
+                for idx, installment in past_due.iterrows():
+                    all_installments.append({
+                        'extension': extension,
+                        'payment_date': installment['payment_date'],
+                        'idx': idx,
+                        'remaining_principal': installment['remaining_principal'],
+                        'remaining_interest': installment['remaining_interest'],
+                        'remaining_amount': installment['remaining_amount']
+                    })
+
+                next_due = extension.get_next_installment(payment_date)
+                if next_due is not None:
+                    all_installments.append({
+                        'extension': extension,
+                        'payment_date': next_due['payment_date'],
+                        'remaining_amount': next_due['remaining_amount']
+                    })
+
+        # Sort by payment date
+        all_installments.sort(key=lambda x: x['payment_date'])
+
+        # Pay installments in order
+        for installment in all_installments:
+            if remaining_payment <= 0:
+                break
+
+            extension = installment['extension']
+            payment_amount = min(
+                installment['remaining_amount'], remaining_payment)
+            payment = extension.make_payment(
+                payment_amount, payment_date)
+            remaining_payment -= payment['payment_amount']
+            payments_made.append(payment)
+
+        return {
+            'payment_date': payment_date,
+            'total_amount': amount,
+            'payments': payments_made,
+            'remaining_amount': remaining_payment
+        }

@@ -99,3 +99,49 @@ def test_get_next_due_amount_on_due_date(base_extension):
 
     # Should return first payment amount since it's due today
     assert next_due == pytest.approx(363.33, rel=1e-2)
+
+
+def test_get_past_due_amount_on_due_date(base_extension):
+    """Test that past due amount is 0 when checking on the due date"""
+    # First payment is due on Feb 15
+    payment_date = datetime.date(2025, 2, 15)
+
+    # Get past due amount on the due date
+    past_due = base_extension.get_past_due_amount(payment_date)
+
+    # Should return 0 since payment isn't past due yet
+    assert past_due == 0.0
+
+
+def test_get_past_due_installments_with_paid_installment(base_extension):
+    """Test getting past due installments after paying first installment"""
+    # Pay first installment
+    first_payment_date = datetime.date(2025, 2, 15)
+    base_extension.make_payment(363.33, first_payment_date)
+
+    # Move to future date where second payment is past due
+    check_date = datetime.date(2025, 3, 20)
+
+    # Get past due installments
+    past_due = base_extension.get_past_due_installments(check_date)
+
+    # Should only return second installment as past due
+    assert len(past_due) == 1
+    assert past_due.iloc[0]['payment_number'] == 2
+    assert past_due.iloc[0]['payment_date'] == datetime.date(2025, 3, 15)
+    assert past_due.iloc[0]['paid'] == False
+    assert past_due.iloc[0]['remaining_principal'] == pytest.approx(
+        333.33, rel=1e-2)
+    assert past_due.iloc[0]['remaining_interest'] == pytest.approx(
+        30.00, rel=1e-2)
+
+
+def test_get_next_installment_no_next_installment(base_extension):
+    """Test that get_next_installment returns None when there are no future installments"""
+    # Pay all installments
+    # Check after all payments are complete
+    check_date = datetime.date(2025, 4, 16)
+
+    # Should return None since all installments are paid
+    next_installment = base_extension.get_next_installment(check_date)
+    assert next_installment is None
