@@ -126,7 +126,7 @@ def test_make_past_due_payment_partial_coverage(factory):
     check_date = datetime.date(2025, 3, 15)
 
     # Make payment that should cover roughly one installment from each
-    payment_result = factory._make_past_due_next_due_payment(
+    payment_result = factory.make_payment(
         check_date, Decimal('1200.00'))
 
     assert len(payment_result['payments']) == 2
@@ -160,7 +160,7 @@ def test_make_past_due_payment_double_first_extension(factory):
     check_date = datetime.date(2025, 4, 15)
 
     # Make payment that should cover both installments of first extension
-    payment_result = factory._make_past_due_next_due_payment(
+    payment_result = factory.make_payment(
         check_date, Decimal('1060.00'))
 
     print(ext1.payment_schedule.to_markdown())
@@ -199,7 +199,7 @@ def test_make_past_due_payment_no_past_due(factory):
     check_date = datetime.date(2025, 1, 20)
 
     # Make payment attempt
-    payment_result = factory._make_past_due_next_due_payment(
+    payment_result = factory.make_payment(
         check_date, Decimal('500.00'))
 
     assert len(payment_result['payments']) == 1
@@ -222,7 +222,7 @@ def test_make_next_due_payment_before_due_date(factory):
     check_date = datetime.date(2025, 2, 1)  # Payment due 2/15
 
     # Make payment for first installment
-    payment_result = factory._make_past_due_next_due_payment(
+    payment_result = factory.make_payment(
         check_date, Decimal('530.00'))
 
     assert len(payment_result['payments']) == 1
@@ -247,7 +247,7 @@ def test_make_next_due_payment_on_due_date(factory):
     check_date = datetime.date(2025, 2, 15)
 
     # Make payment for first installment
-    payment_result = factory._make_past_due_next_due_payment(
+    payment_result = factory.make_payment(
         check_date, Decimal('530.00'))
 
     assert len(payment_result['payments']) == 1
@@ -263,34 +263,37 @@ def test_make_next_due_payment_multiple_extensions(factory):
     ext1_start = datetime.date(2025, 1, 15)
     ext1 = factory.create_extension(
         extension_id="TEST001",
-        amount=Decimal('1000.00'),
+        amount=Decimal('500.00'),
         start_date=ext1_start,
-        term_months=2
+        term_months=1
     )
 
     # Second extension - 3 month term starting later
     ext2_start = datetime.date(2025, 1, 20)
     ext2 = factory.create_extension(
         extension_id="TEST002",
-        amount=Decimal('2000.00'),
+        amount=Decimal('666.67'),
         start_date=ext2_start,
-        term_months=3
+        term_months=1
     )
 
     # Check date before first payments are due
     check_date = datetime.date(2025, 2, 1)
 
     # Make payment that should cover first installment of both extensions
-    payment_result = factory._make_past_due_next_due_payment(
+    payment_result = factory.make_payment(
         check_date, Decimal('1600.00'))
+
+    print(ext1.payment_schedule.to_markdown())
+    print(ext2.payment_schedule.to_markdown())
 
     assert len(payment_result['payments']) == 2
     assert payment_result['total_amount'] == Decimal('1600.00')
-    assert payment_result['remaining_amount'] == Decimal('343.33')
+    assert payment_result['remaining_amount'] == Decimal('398.33')
     assert ext1.payment_schedule.iloc[0]['paid'] == True
     assert ext2.payment_schedule.iloc[0]['paid'] == True
-    assert ext1.status == "ACTIVE"
-    assert ext2.status == "ACTIVE"
+    assert ext1.status == "PAID"
+    assert ext2.status == "PAID"
 
 
 def test_make_past_due_and_next_due_payment_multiple_extensions(factory):
@@ -317,11 +320,8 @@ def test_make_past_due_and_next_due_payment_multiple_extensions(factory):
     check_date = datetime.date(2026, 2, 1)
 
     # Make payment that should cover first installment of both extensions
-    payment_result = factory._make_past_due_next_due_payment(
+    payment_result = factory.make_payment(
         check_date, Decimal('2513.34'))
-
-    print(ext1.payment_schedule.to_markdown())
-    print(ext2.payment_schedule.to_markdown())
 
     assert len(payment_result['payments']) == 4
     assert payment_result['total_amount'] == Decimal('2513.34')

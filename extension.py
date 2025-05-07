@@ -329,7 +329,7 @@ class ExtensionFactory:
                 total_due += extension.get_next_due_amount(payment_date)
         return total_due
 
-    def _make_past_due_next_due_payment(self, payment_date, amount):
+    def make_payment(self, payment_date, amount):
         """
         Make a payment towards extensions in order of oldest to newest installments.
 
@@ -387,9 +387,23 @@ class ExtensionFactory:
             remaining_payment -= Decimal(str(payment['payment_amount']))
             payments_made.append(payment)
 
+        # Pay remaining amount to extensions from oldest to newest
+        if remaining_payment > Decimal('0.00'):
+            sorted_extensions = sorted(
+                self.extensions, key=lambda x: x.start_date)
+            for extension in sorted_extensions:
+                if extension.status == "ACTIVE" and remaining_payment > Decimal('0.00'):
+                    payment_amount = min(
+                        extension.current_balance, remaining_payment)
+                    payment = extension.make_payment(
+                        payment_amount, payment_date)
+                    remaining_payment -= Decimal(
+                        str(payment['payment_amount']))
+                    payments_made.append(payment)
+
         return {
             'payment_date': payment_date,
             'total_amount': amount,
             'payments': payments_made,
-            'remaining_amount': remaining_payment
+            'remaining_amount': remaining_payment.quantize(Decimal('0.01'))
         }
